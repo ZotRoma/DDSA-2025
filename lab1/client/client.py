@@ -1,59 +1,48 @@
 import socket
-from PIL import Image
-import io
-import random
+import cv2
 import numpy as np
 
-def simulate_noise(data, probability=0.01):
-    """Симуляция импульсного шума: с вероятностью probability изменяет байты в потоке."""
-    data_list = list(data)
-    for i in range(len(data_list)):
-        if random.random() < probability:
-            data_list[i] = random.randint(0, 255)
-    return bytes(data_list)
+# Функция добавления импульсного шума
+def add_impulse_noise(image, probability):
+    noisy = image.copy()
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            for k in range(3):  # для каждого канала (R, G, B)
+                if np.random.random() < probability:
+                    noisy[i, j, k] = 255 if np.random.random() < 0.5 else 0
+    return noisy
 
+def send_image(image_path, host, port, noise_probability=0.05):
+    # Создание TCP-сокета
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect((host, port))
 
-def add_impulse_noise(img, probability=0.01):
-    """Добавляет импульсный шум к пикселям изображения."""
-    img_array = np.array(img)
-    noisy_img = img_array.copy()
-    h, w = noisy_img.shape[:2]
-    
-    for i in range(h):
-        for j in range(w):
-            if random.random() < probability:
-                # Случайно устанавливаем пиксель в белый (255) или черный (0)
-                noisy_img[i, j] = random.choice([0, 255])
-    return Image.fromarray(noisy_img)
+    # Загрузка изображения (grayscale)
+    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if image is None:
+        print("Ошибка: изображение не загружено.")
+        return
 
-def send_image(image_path, host, port, noise_probability=0.01):
-    """Загружает изображение, добавляет шум и отправляет на сервер."""
-    # Загрузка изображения
-    img = Image.open(image_path).convert('RGB')
-    # Сериализация в байты
-    noise_image = add_impulse_noise(img, noise_probability)
+    # Добавление импульсного шума (5% пикселей)
+    noisy_image = add_impulse_noise(image, noise_probability)
+    cv2.imwrite('noisy_image.jpg', noisy_image)  # Сохранение для сравнения
 
-    img_byte_arr = io.BytesIO()
-    noise_image.save(img_byte_arr, format='PNG')
-    img_byte_arr = img_byte_arr.getvalue()
-    
-    # Добавление импульсного шума
-    #noisy_data = simulate_noise(img_byte_arr, probability=noise_probability)
-    
-    # Создание сокета и подключение к серверу
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((host, port))
-    
-    print(f'Данных отправлено:{len(img_byte_arr)}')
-    # Отправка данных
-    sock.sendall(img_byte_arr)
-    sock.shutdown(socket.SHUT_WR)
-    sock.close()
-    print("Изображение с шумом отправлено на сервер.")
+    # Отправка размеров изображения
+    height, width, channels = image.shape
+    client.sendall(height.to_bytes(4, 'big'))
+    client.sendall(width.to_bytes(4, 'big'))
+    client.sendall(channels.to_bytes(4, 'big'))
 
-# Пример вызова
-if __name__ == "__main__":
-    image_path = 'D:\\арты на рабочий стол\\image.png'  # Путь к вашему изображению
+    # Отправка данных изображения
+    data = noisy_image.tobytes()
+    client.sendall(len(data).to_bytes(4, 'big'))
+    client.sendall(data)
+
+    print("Изображение отправлено.")
+    client.close()
+
+if __name__ == '__main__':
+    image_path = 'image.png'     # Путь к изображению
     host = "192.168.1.31"        # IP-адрес сервера
-    port = 12345              # Порт сервера
-    send_image(image_path, host, port, noise_probability=0.01)
+    port = 12345                 # Порт сервера
+    send_image(image_path, host, port, noise_probability=0.05)
