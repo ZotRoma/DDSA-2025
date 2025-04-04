@@ -25,7 +25,7 @@ def send_image(image_path, host, port, noise_probability=0.05):
 
     # Добавление импульсного шума (5% пикселей)
     noisy_image = add_impulse_noise(image, noise_probability)
-    cv2.imwrite('noisy_image.jpg', noisy_image)  # Сохранение для сравнения
+    cv2.imwrite('noisy_image.png', noisy_image)  # Сохранение для сравнения
 
     # Отправка размеров изображения
     height, width, channels = image.shape
